@@ -1,0 +1,28 @@
+[project]
+name = "pley302"
+version = "1.0.0"
+description = "302 redirects for an Emby-compatible server whose library lives in 115"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+    "PyYAML>=6.0",
+    "p115client>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+pley302 = "pley302.app:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["pley302"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,9 @@
+services:
+  pley302:
+    build: .
+    container_name: pley302
+    restart: unless-stopped
+    network_mode: host          # Emby usually runs on the host or another container
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - /mnt/local:/mnt/local:ro  # only if local_filepath is used

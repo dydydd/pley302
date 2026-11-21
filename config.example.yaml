@@ -1,0 +1,37 @@
+# Point this at an Emby-compatible server (Emby, Jellyfin, Pley) and give it the
+# 115 account the library lives in.
+server:
+  host: 0.0.0.0
+  admin_port: 15896          # admin panel and cache API
+  admin_token: ""            # optional; when set, send "Authorization: Bearer <token>"
+  redirect_cache_ttl: 900    # seconds a resolved 302 is reused (115 URLs expire)
+  mediasources_cache_ttl: 3600
+  rewrite_cors_js: true      # patch Emby's basehtmlplayer.js for remote direct play
+  forward_client_ua: true    # ask 115 for a URL that accepts the player's User-Agent
+  log_level: INFO
+
+p115:
+  cookie: "UID=...; CID=...; SEID=...; KID=..."
+  # 115 binds a download URL to the User-Agent that asked for it, so this is the
+  # UA used for API calls; the player's own UA is passed through per request.
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  api: web                   # web | app
+  timeout: 20
+
+emby_servers:
+  - name: emby
+    host: http://127.0.0.1:8096      # the Emby-compatible server
+    public_address: ""               # 公网地址，留空则用请求的 Host
+    proxy_port: 8098                 # 反代端口：客户端连这个端口
+    switch: true
+    # Path replacement, one `a => b` per line: left is the path the server
+    # reports, right is the 115 path (or an OpenList link, or pickcode:xxxx).
+    filepath_mapping: |
+      /CloudNAS/CloudDrive/115open/Media => /Media
+      /mnt/alist/115 => https://openlist.example.com/d/115open
+    # Local paths: served as bytes by this service
+    local_filepath: |
+      /mnt/local
+    # Ignored paths: passed to the server untouched
+    direct_path: |
+      /mnt/ignore
