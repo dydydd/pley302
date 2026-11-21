@@ -37,7 +37,7 @@ prefixes are served as bytes by this service (with `Range` support), and
 ```bash
 git clone https://github.com/dydydd/pley302
 cd pley302
-uv venv --python 3.12 .venv && . .venv/bin/activate
+uv venv --python 3.12 .venv && . .venv/bin/activate   # Python 3.12 or newer
 uv pip install -r requirements.txt
 cp config.example.yaml config.yaml     # fill in the cookie and the server address
 python -m pley302                      # reads ./config.yaml, or $PLEY302_CONFIG
