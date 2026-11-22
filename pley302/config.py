@@ -193,3 +193,128 @@ def load_config(path: str | os.PathLike[str]) -> AppConfig:
     if not isinstance(data, dict):
         raise ValueError("config file must hold a mapping at the top level")
     return AppConfig.from_dict(data)
+
+
+def mask_cookie(cookie: str) -> str:
+    """Enough of the cookie to recognise it, never enough to use it."""
+    if not cookie:
+        return ""
+    parts = [part.strip() for part in cookie.split(";") if part.strip()]
+    uid = next((part for part in parts if part.upper().startswith("UID=")), "")
+    if uid:
+        value = uid.split("=", 1)[1]
+        return f"UID={value.split('_')[0]}…  ({len(cookie)} 字符, {len(parts)} 段)"
+    return f"已设置（{len(cookie)} 字符, {len(parts)} 段）"
+
+
+def _rule_lines(rules: list[MappingRule]) -> str:
+    return "\n".join(f"{rule.source} => {rule.target}" for rule in rules)
+
+
+def _block(lines: list[str]) -> str:
+    return "\n".join(lines)
+
+
+def settings_view(config: "AppConfig") -> dict[str, Any]:
+    """What the panel edits: everything but the secrets themselves."""
+    server = config.server
+    return {
+        "server": {
+            "admin_port": server.admin_port,
+            "admin_token_set": bool(server.admin_token),
+            "redirect_cache_ttl": server.redirect_cache_ttl,
+            "file_id_ttl": server.file_id_ttl,
+            "file_id_cache_file": server.file_id_cache_file,
+            "url_reuse_seconds": server.url_reuse_seconds,
+            "url_share_limit": server.url_share_limit,
+            "mediasources_cache_ttl": server.mediasources_cache_ttl,
+            "rewrite_cors_js": server.rewrite_cors_js,
+            "verify_redirect": server.verify_redirect,
+            "fallback_proxy": server.fallback_proxy,
+            "prefetch": server.prefetch,
+        },
+        "p115": {
+            "cookie_set": bool(config.p115.cookie),
+            "cookie_hint": mask_cookie(config.p115.cookie),
+            "user_agent": config.p115.user_agent,
+            "api": config.p115.api,
+        },
+        "emby_servers": [
+            {
+                "name": item.name,
+                "host": item.host,
+                "public_address": item.public_address,
+                "proxy_port": item.proxy_port,
+                "switch": item.switch,
+                "filepath_mapping": _rule_lines(item.filepath_mapping),
+                "local_filepath": _block(item.local_filepath),
+                "direct_path": _block(item.direct_path),
+                "library_roots": _block(item.library_roots),
+            }
+            for item in config.emby_servers
+        ],
+    }
+
+
+def to_yaml(config: "AppConfig") -> str:
+    """The whole configuration as the file it was read from."""
+    data: dict[str, Any] = {
+        "server": {
+            "host": config.server.host,
+            "admin_port": config.server.admin_port,
+            "admin_token": config.server.admin_token,
+            "redirect_cache_ttl": config.server.redirect_cache_ttl,
+            "file_id_ttl": config.server.file_id_ttl,
+            "file_id_cache_file": config.server.file_id_cache_file,
+            "url_reuse_seconds": config.server.url_reuse_seconds,
+            "url_share_limit": config.server.url_share_limit,
+            "mediasources_cache_ttl": config.server.mediasources_cache_ttl,
+            "rewrite_cors_js": config.server.rewrite_cors_js,
+            "forward_client_ua": config.server.forward_client_ua,
+            "verify_redirect": config.server.verify_redirect,
+            "fallback_proxy": config.server.fallback_proxy,
+            "prefetch": config.server.prefetch,
+            "log_level": config.server.log_level,
+        },
+        "p115": {
+            "cookie": config.p115.cookie,
+            "user_agent": config.p115.user_agent,
+            "api": config.p115.api,
+            "timeout": config.p115.timeout,
+        },
+        "emby_servers": [
+            {
+                "name": item.name,
+                "host": item.host,
+                "public_address": item.public_address,
+                "proxy_port": item.proxy_port,
+                "switch": item.switch,
+                "filepath_mapping": _rule_lines(item.filepath_mapping),
+                "local_filepath": _block(item.local_filepath),
+                "direct_path": _block(item.direct_path),
+                "library_roots": _block(item.library_roots),
+            }
+            for item in config.emby_servers
+        ],
+    }
+    header = "# written by the pley302 admin panel\n"
+    return header + yaml.safe_dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+
+def save_config(config: "AppConfig", path: str | os.PathLike[str]) -> None:
+    """Write the file atomically, keeping it readable only by its owner."""
+    import tempfile
+
+    target = Path(path)
+    text = to_yaml(config)
+    handle = tempfile.NamedTemporaryFile(
+        "w", dir=target.parent or Path("."), encoding="utf-8", delete=False
+    )
+    try:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    finally:
+        handle.close()
+    os.chmod(handle.name, 0o600)
+    os.replace(handle.name, target)

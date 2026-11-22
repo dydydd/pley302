@@ -109,16 +109,31 @@ bandwidth.
 
 ## Admin panel
 
-`admin_port` serves a small page (health, servers, the redirect cache that was
-handed out, clear) plus the same data as JSON:
+`admin_port` serves the whole configuration: servers (name, address, proxy port,
+path mapping, local and ignored paths, the `.strm` folders), the 115 cookie with
+a "test" button that asks 115 who it is, the cache knobs, and the redirect
+cache itself. Saving writes the same YAML file the service reads and reloads the
+listeners in place: a port that stays keeps serving with the new settings, one
+that was added starts, one that was removed stops.
 
 ```text
 GET  /                                     the page
 GET  /api/v1/health
+GET  /api/v1/settings                      everything except the secrets
+POST /api/v1/settings                      write the file and apply it
+POST /api/v1/p115/test                     {"cookie": "…"} or the saved one
 GET  /api/v1/reverse/cache/url_cache        Authorization: Bearer <admin_token>
 POST /api/v1/reverse/cache/clear_url_cache  {"key": "…"}
 POST /api/v1/reverse/cache/clear_all_url_cache
 ```
+
+The cookie is never handed back: the panel shows `cookie_set` and a hint
+(`UID=…`, length) and only sends a new one when you type it. A payload without
+`emby_servers` changes only what it names. `admin_port` itself applies after a
+restart, since the panel is what is listening.
+
+Set `admin_token` before exposing the port; with it empty the API answers
+anyone who reaches it.
 
 ## Performance
 

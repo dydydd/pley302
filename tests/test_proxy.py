@@ -10,13 +10,13 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from pley302.app import create_admin_app, build_state
+from pley302.app import Runtime, create_admin_app
 from pley302.cache import RedirectCache, TTLCache
 from pley302.config import AppConfig, EmbyServerConfig, P115Settings, ServerSettings
 from pley302.emby import EmbyUpstream
 from pley302.index import StrmIndex
 from pley302.mapping import PathMapper
-from pley302.proxy import ProxyState, create_app
+from pley302.proxy import Ctx, ProxyState, create_app
 from pley302.rewrite import rewrite_playback_info
 
 MEDIA_PATH = "/CloudNAS/CloudDrive/115open/Media/阿甘正传/阿甘正传.mkv"
@@ -139,7 +139,7 @@ def make_state(
 
 
 def call_proxy(config: AppConfig, server_cfg: EmbyServerConfig, state: ProxyState, method: str, url: str, **kwargs):
-    app = create_app(config, server_cfg, state)
+    app = create_app(Ctx(state=state, app_config=config), server_cfg)
 
     async def run():
         transport = httpx.ASGITransport(app=app)
@@ -261,13 +261,17 @@ def test_rewrite_keeps_media_streams():
     assert info["MediaSources"][0]["Path"] == "/Media/x.mkv"  # input untouched
 
 
-def test_admin_cache_endpoints_have_the_listed_shape():
+def test_admin_cache_endpoints_have_the_listed_shape(tmp_path):
+    from pley302.app import Runtime
+
     resolver = StubResolver()
     state, config, server_cfg = make_state(resolver)
     call_proxy(
         config, server_cfg, state, "GET", "/videos/42/stream?MediaSourceId=src-1&DeviceId=dev1"
     )
-    app = create_admin_app(config, {8098: state})
+    runtime = Runtime(str(tmp_path / "config.yaml"), config)
+    runtime.ctxs[8098] = Ctx(state=state, app_config=config)
+    app = create_admin_app(runtime)
 
     async def run():
         transport = httpx.ASGITransport(app=app)
@@ -289,7 +293,9 @@ def test_admin_cache_endpoints_have_the_listed_shape():
     assert after.json()["data"]["cache"] == {}
 
 
-def test_build_state_uses_configured_ports():
+def test_runtime_only_serves_enabled_ports(tmp_path):
+    from pley302.config import save_config
+
     config = AppConfig.from_dict(
         {
             "emby_servers": [
@@ -298,8 +304,10 @@ def test_build_state_uses_configured_ports():
             ]
         }
     )
-    states = build_state(config)
-    assert list(states) == [8098]
+    path = tmp_path / "config.yaml"
+    save_config(config, path)
+    runtime = Runtime(str(path), config)
+    assert sorted(runtime._wanted()) == [8098]
 
 
 def test_strm_item_named_only_by_file_is_resolved_from_the_library(tmp_path: Path):
@@ -543,11 +551,13 @@ def test_prefetch_warms_the_resolver_before_the_play_request():
     assert resolver.calls == [("/媒体库/x.mkv", "Infuse/7.8")]
 
 
-def test_admin_panel_page_is_served():
-    from pley302.app import create_admin_app
+def test_admin_panel_page_is_served(tmp_path):
+    from pley302.app import Runtime
 
     state, config, _server_cfg = make_state(StubResolver())
-    app = create_admin_app(config, {8098: state})
+    runtime = Runtime(str(tmp_path / "config.yaml"), config)
+    runtime.ctxs[8098] = Ctx(state=state, app_config=config)
+    app = create_admin_app(runtime)
 
     async def run():
         transport = httpx.ASGITransport(app=app)

@@ -557,28 +557,42 @@ async def passthrough(
     )
 
 
+@dataclass(slots=True)
+class Ctx:
+    """What a running listener reads. Swapping ``state`` reloads it in place:
+    the ASGI app keeps working while the configuration behind it changes."""
+
+    state: ProxyState
+    app_config: AppConfig
+
+    def swap(self, state: ProxyState, app_config: AppConfig) -> ProxyState:
+        previous, self.state, self.app_config = self.state, state, app_config
+        return previous
+
+
 @asynccontextmanager
-async def _lifespan(state: ProxyState):
+async def _lifespan(ctx: Ctx):
     yield
-    await state.client.aclose()
-    await state.resolver.aclose()
+    await ctx.state.client.aclose()
+    await ctx.state.resolver.aclose()
 
 
-def create_app(app_config: AppConfig, server: EmbyServerConfig, state: ProxyState) -> FastAPI:
+def create_app(ctx: Ctx, server: EmbyServerConfig) -> FastAPI:
     app = FastAPI(
         title=f"pley302:{server.name}",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
-        lifespan=lambda _app: _lifespan(state),
+        lifespan=lambda _app: _lifespan(ctx),
     )
-    app.state.proxy = state
+    app.state.ctx = ctx
 
     @app.api_route(
         "/{full_path:path}",
         methods=["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     )
     async def dispatch(request: Request, full_path: str) -> Response:
+        state = ctx.state
         path = "/" + full_path
         # Every request that reaches us, so a failure can be pinned to a hop.
         log.info(
@@ -602,7 +616,7 @@ def create_app(app_config: AppConfig, server: EmbyServerConfig, state: ProxyStat
         if STREAM_RE.match(path) or DOWNLOAD_RE.match(path):
             item_id = (STREAM_RE.match(path) or DOWNLOAD_RE.match(path)).group("item")
             return await handle_play(state, request, item_id)
-        if BASEHTMLPLAYER_RE.search(path) and app_config.server.rewrite_cors_js:
+        if BASEHTMLPLAYER_RE.search(path) and ctx.app_config.server.rewrite_cors_js:
             try:
                 return await passthrough(state, request, force_buffer=True)
             except httpx.HTTPError as exc:
