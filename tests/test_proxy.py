@@ -558,3 +558,21 @@ def test_admin_panel_page_is_served():
     assert response.status_code == 200
     assert "pley302" in response.text
     assert "/api/v1/reverse/cache/url_cache" in response.text
+
+
+def test_upstream_404_is_passed_on_not_masked_as_502():
+    import pytest as _pytest
+
+    from pley302.emby import EmbyError
+
+    state, config, server_cfg = make_state(StubResolver())
+
+    async def refuse(*args, **kwargs):
+        raise EmbyError("PlaybackInfo answered 404: not found", status=404)
+
+    state.upstream.playback_info = refuse
+    response = call_proxy(
+        config, server_cfg, state, "GET", "/Items/7/PlaybackInfo?api_key=k&DeviceId=d"
+    )
+    assert response.status_code == 404
+    assert "404" in response.text

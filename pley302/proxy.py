@@ -429,7 +429,7 @@ async def handle_play(state: ProxyState, request: Request, item_id: str) -> Resp
         info = await _fetch_playback_info(state, request, item_id)
     except EmbyError as exc:
         log.error("play of %s failed before the 302: %s", item_id, exc)
-        return Response(content=f"playback info failed: {exc}".encode(), status_code=502)
+        return Response(content=f"playback info failed: {exc}".encode(), status_code=exc.status)
     source = pick_media_source(info, media_source_id)
     if source is None:
         log.warning("no MediaSource %r for item %s", media_source_id, item_id)
@@ -486,7 +486,7 @@ async def handle_playback_info(state: ProxyState, request: Request, item_id: str
         log.error("PlaybackInfo for %s failed: %s", item_id, exc)
         return Response(
             content=json.dumps({"error": str(exc)}).encode(),
-            status_code=502,
+            status_code=exc.status,
             media_type="application/json",
             headers={"Access-Control-Allow-Origin": "*"},
         )

@@ -244,13 +244,25 @@ class P115Resolver:
             get_id = getattr(owner, "get_id", None)
             if get_id is None:
                 continue
-            try:
-                file_id = get_id(path)
-            except Exception as exc:
-                raise P115Error(f"115 has no file at {path!r}: {exc}") from exc
-            if file_id is None:
-                raise P115Error(f"115 has no file at {path!r}")
-            return int(file_id)
+            # A long-running process keeps p115client's own directory listings;
+            # a file added since the listing was read looks missing until it is
+            # asked for again with `refresh=True`.
+            for kwargs in ({}, {"refresh": True}):
+                try:
+                    file_id = get_id(path, **kwargs)
+                except TypeError:
+                    if kwargs:
+                        raise
+                    break
+                except Exception as exc:
+                    if kwargs:
+                        raise P115Error(f"115 has no file at {path!r}: {exc}") from exc
+                    log.debug("115 has %r cached as missing, asking again", path)
+                    continue
+                if file_id is None:
+                    continue
+                return int(file_id)
+            raise P115Error(f"115 has no file at {path!r}")
         raise P115Error("p115client exposes no get_id(); cannot map a path to a file id")
 
     def _download_url(self, client: Any, pickcode_or_id: Any, user_agent: str) -> str:

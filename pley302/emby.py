@@ -21,7 +21,11 @@ DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
 
 class EmbyError(RuntimeError):
-    pass
+    """The server refused the PlaybackInfo; ``status`` is what it answered."""
+
+    def __init__(self, message: str, status: int = 502) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 def api_key_from(query: Mapping[str, str], headers: Mapping[str, str]) -> str:
@@ -111,7 +115,10 @@ class EmbyUpstream:
             json_body=body if method.upper() == "POST" else None,
         )
         if response.status_code >= 400:
-            raise EmbyError(f"PlaybackInfo answered {response.status_code}: {response.text[:200]}")
+            raise EmbyError(
+                f"PlaybackInfo answered {response.status_code}: {response.text[:200]}",
+                status=response.status_code if 400 <= response.status_code < 500 else 502,
+            )
         try:
             data = response.json()
         except Exception as exc:
